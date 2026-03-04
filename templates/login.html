@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>后台登录</title>
+ <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+ <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+  <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">后台登录</h1>
+  <form id="loginForm" onsubmit="submitLogin(event)">
+   <!-- 用户名输入 -->
+   <div class="mb-4">
+    <label for="username" class="block text-sm font-medium text-gray-700">用户名</label>
+    <input type="text" id="username" name="username" placeholder="请输入用户名"
+     class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+     required />
+   </div>
+
+   <!-- 密码输入 -->
+   <div class="mb-6">
+    <label for="password" class="block text-sm font-medium text-gray-700">密码</label>
+    <input type="password" id="password" name="password" placeholder="请输入密码"
+     class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+     required />
+   </div>
+
+   <!-- 登录按钮 -->
+   <button type="submit"
+    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+    登录
+   </button>
+
+   <!-- 忘记密码链接 -->
+   <div class="mt-4 text-center">
+    <a href="#" class="text-sm text-blue-600 hover:text-blue-500">忘记密码？</a>
+    <a href="/register" class="text-sm text-blue-600 hover:text-blue-500">没有账号？注册</a>
+   </div>
+
+  </form>
+ </div>
+
+ <script>
+   async function submitLogin(event) {
+    event.preventDefault(); // 阻止表单默认提交
+
+    const form = document.getElementById('loginForm');
+    const formData = new FormData(form);
+
+    try {
+     const response = await fetch('/login', {
+      method: 'POST',
+      body: formData
+     });
+
+     if (response.redirected) {
+      window.location.href = response.url;
+      return;
+     }
+
+     const text = await response.text();
+
+     // 简单的错误文本判断
+     if (text.includes("失败") || text.includes("错误") || text.includes("禁用") || text.includes("不存在")) {
+      alert(text);
+     } else {
+      // 尝试解析是否是 JSON 格式的错误
+      try {
+       const json = JSON.parse(text);
+       if (json.success) {
+        window.location.href = '/users';
+       } else {
+        alert(json.message || '登录失败');
+       }
+      } catch (e) {
+       // 如果不是 JSON 也不是错误文本，可能是页面 HTML，直接替换显示
+       document.documentElement.innerHTML = text;
+      }
+     }
+
+    } catch (error) {
+     console.error('Error:', error);
+     alert('网络请求失败，请稍后重试');
+    }
+   }
+  </script>
+</body>
+
+</html>
