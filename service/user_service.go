@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"time"
 	"userManagement/dao"
 	"userManagement/model"
 )
@@ -50,11 +51,14 @@ func Login(username, password string) (*model.User, error) {
 	if user.Password != password {
 		return user, errors.New("密码错误")
 	}
+	now := time.Now().Format("2006-01-02 15:04:05")
+
 	go func() {
 		// 注意：UpdateLastLogin 第二个参数应该传时间字符串，或者修改 DAO 只传 ID
 		// 这里假设您已经修改了 DAO 接收 username 或者 string
-		_ = dao.UpdateLastLogin(user.ID, username)
+		_ = dao.UpdateLastLogin(user.ID, now)
 	}()
+	user.LastLogin = now
 	return user, nil
 }
 

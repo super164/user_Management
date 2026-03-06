@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"math"
 
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 	"userManagement/dao"
+	"userManagement/model"
 
 	"userManagement/service"
 	"userManagement/session"
@@ -24,12 +26,51 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 查询所有用户
-	users, err := dao.GetAllUsers()
+	// 获取分页参数 (默认为第1页)
+	pageStr := r.URL.Query().Get("page")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := 7 // 每页显示 7 个
+
+	//查询总数
+	total, err := dao.GetUserCount()
 	if err != nil {
-		http.Error(w, "查询用户失败"+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "查询用户总数失败"+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	//计算总页数
+	totalPages := int(math.Ceil(float64(total) / float64(pageSize)))
+	//防止页码越界
+	if page > totalPages && totalPages > 0 {
+		page = totalPages
+	}
+
+	//分页查询数据
+	var users []model.User
+	if total > 0 {
+		users, err = dao.GetUsersByPage(page, pageSize)
+		if err != nil {
+			http.Error(w, "查询用户失败"+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	//生成页码列表
+	var pages []int
+	for i := 1; i <= totalPages; i++ {
+		pages = append(pages, i)
+	}
+	//计算当前页显示的起始和结束序号
+	startItem := (page-1)*pageSize + 1
+	endItem := page * pageSize
+	if endItem > total {
+		endItem = total
+	}
+	if total == 0 {
+		startItem = 0
+	}
+
 	//解析模版
 	t, err := template.ParseFiles("templates/users.html")
 	if err != nil {
@@ -39,7 +80,17 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 	// 传递数据给模板
 	data := map[string]interface{}{
 		"CurrentUser": currentUser,
-		"Users":       users,
+		"Users":       users,             // 当前页的用户数据
+		"Page":        page,              // 当前页码
+		"Total":       total,             // 总记录数
+		"TotalPages":  totalPages,        // 总页数
+		"HasPrev":     page > 1,          // 是否有上一页
+		"HasNext":     page < totalPages, // 是否有下一页
+		"PrevPage":    page - 1,
+		"NextPage":    page + 1,
+		"Pages":       pages,     // 页码列表
+		"Start":       startItem, // 当前页起始条目
+		"End":         endItem,
 	}
 	//渲染页面
 	t.Execute(w, data)
@@ -183,10 +234,20 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	// 5. 处理头像上传
 	var avatarPath string
+	//存储旧头像路径
+	var oldAvatarPath string
+
 	file, handler, err := r.FormFile("avatar")
 	if err == nil {
 		// 有文件上传
 		defer file.Close()
+
+		//查询当前用户的头像
+		targetUser, err := dao.GetUserByID(targetID)
+		if err != nil && targetUser != nil {
+			oldAvatarPath = targetUser.Avatar
+		}
+
 		// 生成唯一文件名
 		filename := fmt.Sprintf("%d_%s", time.Now().Unix(), handler.Filename)
 
@@ -212,6 +273,13 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(fmt.Sprintf(`{"success": false, "message": "更新失败: %s"}`, err.Error())))
 		return
 	}
+
+	//更新成功,容易过就投降且有新头像，则删除旧文件
+	if avatarPath != "" && oldAvatarPath != "" {
+		oldFilePath := "./uploads/" + oldAvatarPath
+		_ = os.Remove(oldFilePath)
+	}
+
 	//7. 同步更新 Session (如果是修改当前登录用户)
 	if currentUser.ID == targetID {
 

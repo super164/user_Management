@@ -34,12 +34,12 @@
     <nav>
         <ul class="space-y-2">
             <li>
-                <a href="index.html" class="flex items-center p-2 hover:bg-gray-700 rounded">
+                <a href="/index" class="flex items-center p-2 hover:bg-gray-700 rounded">
                     <i data-feather="home" class="w-4 h-4 mr-2"></i> 首页概览
                 </a>
             </li>
             <li>
-                <a href="users.html" class="flex items-center p-2 hover:bg-gray-700 rounded">
+                <a href="/users" class="flex items-center p-2 hover:bg-gray-700 rounded">
                     <i data-feather="users" class="w-4 h-4 mr-2"></i> 用户管理
                 </a>
             </li>
@@ -82,7 +82,10 @@
 <main class="ml-64 pt-20 p-8" id="mainContent">
     <!-- 继承通用布局 -->
     <script>
-        setPageTitle('用户管理');
+        // 等待 DOM 加载完成后再设置标题，或者直接把 setPageTitle 放到这里定义
+        document.addEventListener('DOMContentLoaded', function() {
+             setPageTitle('用户管理');
+        });
     </script>
 
     <div class="space-y-6">
@@ -140,9 +143,22 @@
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">{{.Role}}</span>
+                        {{if eq .Role "admin"}}
+                            <!-- 显示黄色“管理员” -->
+                            <span class="px-2 py-1 bg-yellow-100 text-blue-800 rounded-full text-sm">{{.Role}}</span>
+                        {{else}}
+                            <!-- 显示蓝色“用户” -->
+                            <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">{{.Role}}</span>
+                        {{end}}
                     </td>
-                    <td class="px-6 py-4">{{.LastLogin}}</td>
+                    <td class="px-6 py-4">
+                        {{if eq .LastLogin ""}}
+                            <!-- 未登录-->
+                            <span class="block w-full text-center">-</span>
+                        {{else}}
+                            {{.LastLogin}}
+                        {{end}}
+                    </td>
                     <td class="px-6 py-4">
                          {{if eq .Status 1}}
                             <!-- 状态为 1：显示绿色“启用” -->
@@ -187,12 +203,30 @@
 
         <!-- 分页 -->
         <div class="flex justify-between items-center px-4 py-3 bg-white rounded-xl shadow">
-            <span class="text-sm text-gray-600">显示 1-10 项，共 85 项</span>
+            <span class="text-sm text-gray-600">显示  {{.Start}}-{{.End}} 项，共 {{.Total}} 项</span>
             <div class="flex gap-2">
-                <button class="px-3 py-1 rounded hover:bg-gray-100">上一页</button>
-                <button class="px-3 py-1 bg-blue-100 rounded">1</button>
-                <button class="px-3 py-1 rounded hover:bg-gray-100">2</button>
-                <button class="px-3 py-1 rounded hover:bg-gray-100">下一页</button>
+                <!-- 上一页 -->
+                {{if .HasPrev}}
+                <a href="/users?page={{.PrevPage}}" class="px-3 py-1 rounded hover:bg-gray-100 border text-gray-600">上一页</a>
+                {{else}}
+                <span class="px-3 py-1 rounded text-gray-300 border cursor-not-allowed">上一页</span>
+                {{end}}
+                <!-- 页码循环 -->
+                {{range .Pages}}
+                    {{if eq . $.Page}}
+                    <!-- 当前页：高亮 -->
+                    <span class="px-3 py-1 bg-blue-100 text-blue-600 rounded border border-blue-200 font-medium">{{.}}</span>
+                    {{else}}
+                    <!-- 其他页：链接 -->
+                    <a href="/users?page={{.}}" class="px-3 py-1 rounded hover:bg-gray-100 border text-gray-600">{{.}}</a>
+                    {{end}}
+                {{end}}
+                <!-- 下一页 -->
+                {{if .HasNext}}
+                <a href="/users?page={{.NextPage}}" class="px-3 py-1 rounded hover:bg-gray-100 border text-gray-600">下一页</a>
+                {{else}}
+                <span class="px-3 py-1 rounded text-gray-300 border cursor-not-allowed">下一页</span>
+                {{end}}
             </div>
         </div>
     </div>
