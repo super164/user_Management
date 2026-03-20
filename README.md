@@ -7,36 +7,36 @@
 本项目采用经典的分层架构设计，前后端分离（模板渲染模式），旨在展示如何使用 Go 语言的基础库（`net/http`）构建健壮的 Web 应用。
 
 ### 核心特性
-*   **用户管理**：支持用户的增删改查 (CRUD)、分页显示及模糊搜索。
-*   **权限控制**：基于角色的访问控制 (RBAC)，区分 `admin` 和 `user` 角色。
-*   **安全鉴权**：
-    *   基于 Session 的登录状态管理。
-    *   密码使用 `bcrypt` 加密存储。
-    *   中间件 (Middleware) 拦截保护敏感路由。
-    *   账号封禁/删除后立即踢出机制（Session + 数据库双重校验）。
-*   **文件上传**：支持用户头像上传、存储及自动清理旧文件。
-*   **现代化 UI**：使用 TailwindCSS 构建响应式界面，集成 Feather Icons 图标库。
-
----
+- **用户管理**：支持用户的增删改查 (CRUD)、分页显示及模糊搜索。
+- **权限控制**：基于角色的访问控制 (RBAC)，区分 `admin` 和 `user` 角色。
+- **安全鉴权**：
+  - 基于 Session 的登录状态管理。
+  - 密码使用 `bcrypt` 加密存储。
+  - 中间件 (Middleware) 拦截保护敏感路由。
+  - 账号封禁/删除后立即踢出机制（Session + 数据库双重校验）。
+- **文件上传**：支持用户头像上传、存储及自动清理旧文件。
+- **图片白名单**：头像上传仅允许 `jpg/jpeg/png/gif/webp`，并校验真实 Content-Type。
+- **错误提示体验**：注册/新建用户校验失败以弹窗提示，不再跳转“错误文本页”。
+- **现代化 UI**：使用 TailwindCSS 构建响应式界面，集成 Feather Icons 图标库。
 
 ## 🛠 技术栈
 
 ### 后端 (Backend)
-*   **语言**：Golang 1.25
-*   **Web 服务**：原生 `net/http`
-*   **数据库驱动**：`github.com/go-sql-driver/mysql`
-*   **加密库**：`golang.org/x/crypto`
+- **语言**：Golang 1.25
+- **Web 服务**：原生 `net/http`
+- **数据库驱动**：`github.com/go-sql-driver/mysql`
+- **加密库**：`golang.org/x/crypto`
 
 ### 前端 (Frontend)
-*   **模板引擎**：Go `html/template`
-*   **样式框架**：TailwindCSS (CDN)
-*   **脚本**：原生 JavaScript (ES6+), Fetch API
-*   **图标库**：Feather Icons
+
+- **模板引擎**：Go `html/template`
+- **样式框架**：TailwindCSS (CDN)
+- **脚本**：原生 JavaScript (ES6+), Fetch API
+- **图标库**：Feather Icons
 
 ### 数据库 (Database)
-*   **MySQL**: 存储用户信息及元数据。
 
----
+- **MySQL**: 存储用户信息及元数据。
 
 ## 📂 项目结构
 
@@ -73,10 +73,11 @@ f:\userManagement\
 ## 🚀 快速开始
 
 ### 1. 环境准备
-*   安装 Go 1.25+
-*   安装 MySQL 5.7+
+- 安装 Go 1.25+
+- 安装 MySQL 5.7+
 
 ### 2. 数据库配置
+
 在 MySQL 中创建数据库 `user_management` 并导入以下表结构：
 ```sql
 CREATE TABLE `users` (
@@ -91,7 +92,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
-*注意：请在 `db/mysql.go` 中修改数据库连接字符串（DSN）。*
+注意：请在 [mysql.go](file:///f:/userManagement/db/mysql.go) 中修改数据库连接字符串（DSN）。建议不要在代码里硬编码生产环境账号密码。
 
 ### 3. 运行项目
 ```bash
@@ -108,21 +109,23 @@ go run main.go
 ## 🔑 核心功能说明
 
 ### 1. 鉴权与安全
-*   **登录拦截**：`AuthMiddleware` 会拦截所有非公开接口。
-*   **双重校验**：每次请求不仅检查 Session，还会查询数据库确认用户状态。如果用户被**删除**或**禁用**，系统会立即销毁 Session 并将用户重定向至登录页，同时弹窗提示原因。
+- **登录拦截**：`AuthMiddleware` 会拦截所有非公开接口。
+- **双重校验**：每次请求不仅检查 Session，还会查询数据库确认用户状态。如果用户被**删除**或**禁用**，系统会立即销毁 Session 并将用户重定向至登录页，同时弹窗提示原因。
 
 ### 2. 文件上传
-*   用户可以在“编辑用户”弹窗中上传头像。
-*   后端会自动重命名文件（时间戳+原名）以防冲突。
-*   更新头像时，系统会自动检测并删除旧的头像文件，防止垃圾堆积。
+
+- 用户可以在“编辑用户”弹窗中上传头像。
+- 后端会自动重命名文件（时间戳+原文件名）以防冲突，并对文件名做安全处理。
+- 更新头像时，系统会自动检测并删除旧的头像文件，防止垃圾堆积。
+- 上传头像会校验扩展名与文件头类型，仅允许图片格式。
 
 ### 3. 异步交互
-*   登录和更新用户信息均采用 AJAX (`fetch` API) 方式。
-*   前端根据后端返回的 JSON 或状态码进行无刷新跳转或弹窗提示。
 
----
+- 登录、注册、创建用户、更新用户信息均采用 AJAX (`fetch` API) 方式。
+- 前端根据后端返回的 JSON 或状态码进行无刷新跳转或弹窗提示。
 
 ## 📝 开发规范
-*   **代码风格**：遵循 Go 官方格式化标准 (`gofmt`)。
-*   **错误处理**：Controller 层统一捕获错误并返回标准化的 HTTP 状态码或 JSON 消息。
-*   **前端交互**：统一在 `static/js/` 目录下管理 JavaScript 逻辑。
+
+- **代码风格**：遵循 Go 官方格式化标准 (`gofmt`)。
+- **错误处理**：Controller 层统一捕获错误并返回标准化的 HTTP 状态码或 JSON 消息。
+- **前端交互**：统一在 `static/js/` 目录下管理 JavaScript 逻辑。
