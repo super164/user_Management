@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"errors"
 	"userManagement/db"
 	"userManagement/model"
 )
@@ -17,11 +18,40 @@ func CreateUser(user model.User) error {
 }
 
 // GetUserCount 获取用户总数
-func GetUserCount() (int, error) {
+func GetUserCount(query string, status int) (int, error) {
 	var count int
 	// 查询总记录数
-	err := db.DB.QueryRow("SELECT count(*) FROM users").Scan(&count)
+	sqlStr := "SELECT count(*) FROM users WHERE 1=1"
+	var args []interface{}
+
+	if query != "" {
+		sqlStr += " AND username LIKE ?"
+		args = append(args, "%"+query+"%")
+	}
+	// 状态筛选逻辑
+	if status != -1 {
+		sqlStr += " AND status = ?"
+		args = append(args, status)
+	}
+	err := db.DB.QueryRow(sqlStr, args...).Scan(&count)
 	return count, err
+}
+
+// AddUser 添加新用户
+func AddUser(u model.User) error {
+	//判断用户是否存在
+	var count int
+	err := db.DB.QueryRow("SELECT count(*) FROM users WHERE username=?", u.Username).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("用户名已存在")
+	}
+	// 插入数据 (默认状态为 1-启用)
+	_, err = db.DB.Exec("INSERT INTO users (username, password, role, avatar, status) VALUES (?, ?, ?, ?, ?)",
+		u.Username, u.Password, u.Role, u.Avatar, 1)
+	return err
 }
 
 // DeleteUser 删除用户

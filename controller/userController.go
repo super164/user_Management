@@ -1,14 +1,19 @@
 package controller
 
 import (
+	"bytes"
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"math"
 
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 	"userManagement/dao"
 	"userManagement/model"
@@ -17,13 +22,64 @@ import (
 	"userManagement/session"
 )
 
+func wantsJSON(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "application/json")
+}
+
+func setFlash(w http.ResponseWriter, msg string, open string) {
+	if msg != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:   "flash_msg",
+			Value:  url.QueryEscape(msg),
+			Path:   "/",
+			MaxAge: 30,
+		})
+	}
+	if open != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:   "flash_open",
+			Value:  open,
+			Path:   "/",
+			MaxAge: 30,
+		})
+	}
+}
+
+func prepareAvatarUpload(file io.Reader, originalFilename string) (io.Reader, string, error) {
+	safeName := filepath.Base(originalFilename)
+	ext := strings.ToLower(filepath.Ext(safeName))
+
+	head := make([]byte, 512)
+	n, err := io.ReadFull(file, head)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return nil, "", fmt.Errorf("读取文件失败")
+	}
+	head = head[:n]
+
+	contentType := http.DetectContentType(head)
+	allowed := map[string]map[string]bool{
+		"image/jpeg": {".jpg": true, ".jpeg": true},
+		"image/png":  {".png": true},
+		"image/gif":  {".gif": true},
+		"image/webp": {".webp": true},
+	}
+	if allowed[contentType] == nil || !allowed[contentType][ext] {
+		return nil, "", fmt.Errorf("仅支持上传 jpg/jpeg/png/gif/webp 格式图片")
+	}
+	return io.MultiReader(bytes.NewReader(head), file), safeName, nil
+}
+
 // ListUsers 用户主页
-func ListUsers(w http.ResponseWriter, r *http.Request) {
-	// 检查是否登录
-	currentUser, ok := session.GetSession(r)
-	if !ok {
-		http.Redirect(w, r, "/login", 302)
-		return
+func ListUsers(w http.ResponseWriter, r *http.Request, currentUser model.User) {
+	// 鉴权逻辑已移至中间件
+
+	query := r.URL.Query().Get("q")
+	//获取状态参数
+	statusStr := r.URL.Query().Get("status")
+	status := -1
+	if statusStr != "" {
+		status, _ = strconv.Atoi(statusStr)
 	}
 
 	// 获取分页参数 (默认为第1页)
@@ -32,10 +88,11 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 	if page < 1 {
 		page = 1
 	}
+
 	pageSize := 7 // 每页显示 7 个
 
 	//查询总数
-	total, err := dao.GetUserCount()
+	total, err := dao.GetUserCount(query, status)
 	if err != nil {
 		http.Error(w, "查询用户总数失败"+err.Error(), http.StatusInternalServerError)
 		return
@@ -50,7 +107,7 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 	//分页查询数据
 	var users []model.User
 	if total > 0 {
-		users, err = dao.GetUsersByPage(page, pageSize)
+		users, err = dao.GetUsersByPage(page, pageSize, query, status)
 		if err != nil {
 			http.Error(w, "查询用户失败"+err.Error(), http.StatusInternalServerError)
 			return
@@ -91,18 +148,17 @@ func ListUsers(w http.ResponseWriter, r *http.Request) {
 		"Pages":       pages,     // 页码列表
 		"Start":       startItem, // 当前页起始条目
 		"End":         endItem,
+		"Query":       query,  //搜索关键词
+		"Status":      status, //回传状态给前端
 	}
 	//渲染页面
 	t.Execute(w, data)
 }
 
 // DeleteUser 删除用户
-func DeleteUser(w http.ResponseWriter, r *http.Request) {
-	currentUser, ok := session.GetSession(r)
-	if !ok {
-		http.Redirect(w, r, "/login", 302)
-		return
-	}
+func DeleteUser(w http.ResponseWriter, r *http.Request, currentUser model.User) {
+	// 鉴权逻辑已移至中间件
+
 	// 检查权限
 	if currentUser.Role != "admin" {
 		w.Write([]byte("无权限操作"))
@@ -122,20 +178,14 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // UploadAvatar 上传头像
-func UploadAvatar(w http.ResponseWriter, r *http.Request) {
+func UploadAvatar(w http.ResponseWriter, r *http.Request, currentUser model.User) {
 	// 必须是 POST
 	if r.Method != "POST" {
 		http.Error(w, "非法请求", http.StatusMethodNotAllowed)
 		return
 	}
 
-	//检查是否登录
-	currentUser, ok := session.GetSession(r)
-	if !ok {
-		//未登录则跳转到登录页
-		http.Redirect(w, r, "/login", 302)
-		return
-	}
+	// 鉴权逻辑已移至中间件
 
 	// 解析表单
 	err := r.ParseMultipartForm(10 << 20) // 10MB
@@ -159,8 +209,14 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	reader, safeName, err := prepareAvatarUpload(file, handler.Filename)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// 生成文件名（避免覆盖）
-	filename := fmt.Sprintf("%d_%s", time.Now().Unix(), handler.Filename)
+	filename := fmt.Sprintf("%d_%s", time.Now().Unix(), safeName)
 
 	_ = os.MkdirAll("./uploads", 0755)
 
@@ -173,7 +229,7 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	defer dst.Close()
 
 	// 写入文件内容
-	if _, err := io.Copy(dst, file); err != nil {
+	if _, err := io.Copy(dst, reader); err != nil {
 		http.Error(w, "文件写入失败", http.StatusInternalServerError)
 		return
 	}
@@ -183,7 +239,7 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// 如果是权限错误或数据库错误
 		http.Error(w, "更新失败: "+err.Error(), http.StatusForbidden)
-		// 如果更新数据库失败，最好把刚才上传的垃圾文件删掉（可选优化）
+		// 如果更新数据库失败，最好把刚才上传的垃圾文件删掉
 		_ = os.Remove("./uploads/" + filename)
 		return
 	}
@@ -193,19 +249,14 @@ func UploadAvatar(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateUser 更新用户信息
-func UpdateUser(w http.ResponseWriter, r *http.Request) {
+func UpdateUser(w http.ResponseWriter, r *http.Request, currentUser model.User) {
 	// 1. 必须是 POST 请求
 	if r.Method != "POST" {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 2. 检查登录
-	currentUser, ok := session.GetSession(r)
-	if !ok {
-		http.Redirect(w, r, "/login", 302)
-		return
-	}
+	// 鉴权逻辑已移至中间件
 
 	// 3. 解析表单 (支持文件上传)
 	err := r.ParseMultipartForm(10 << 20) // 10MB
@@ -244,12 +295,18 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 		//查询当前用户的头像
 		targetUser, err := dao.GetUserByID(targetID)
-		if err != nil && targetUser != nil {
+		if err == nil && targetUser != nil {
 			oldAvatarPath = targetUser.Avatar
 		}
 
+		reader, safeName, err := prepareAvatarUpload(file, handler.Filename)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		// 生成唯一文件名
-		filename := fmt.Sprintf("%d_%s", time.Now().Unix(), handler.Filename)
+		filename := fmt.Sprintf("%d_%s", time.Now().Unix(), safeName)
 
 		// 确保目录存在
 		_ = os.MkdirAll("./uploads", 0755)
@@ -261,7 +318,10 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer dst.Close()
-		io.Copy(dst, file)
+		if _, err := io.Copy(dst, reader); err != nil {
+			http.Error(w, "文件写入失败", http.StatusInternalServerError)
+			return
+		}
 		avatarPath = filename
 	}
 
@@ -269,12 +329,15 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// 参数说明: 当前操作人, 目标用户ID, 新用户名, 新密码, 新状态, 新头像路径
 	err = service.UpdateUserInfo(currentUser, targetID, username, password, status, avatarPath)
 	if err != nil {
+		if avatarPath != "" {
+			_ = os.Remove("./uploads/" + avatarPath)
+		}
 		w.WriteHeader(http.StatusForbidden) // 或者 200，前端根据 success 字段判断
 		w.Write([]byte(fmt.Sprintf(`{"success": false, "message": "更新失败: %s"}`, err.Error())))
 		return
 	}
-
-	//更新成功,容易过就投降且有新头像，则删除旧文件
+	log.Println(oldAvatarPath)
+	//更新成功,容易过且有新头像，则删除旧文件
 	if avatarPath != "" && oldAvatarPath != "" {
 		oldFilePath := "./uploads/" + oldAvatarPath
 		_ = os.Remove(oldFilePath)
@@ -301,4 +364,92 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// 8. 成功后返回 JSON 成功信息
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"success": true, "message": "更新成功"}`))
+}
+
+// CreateUser 创建用户
+func CreateUser(w http.ResponseWriter, r *http.Request, currentUser model.User) {
+	// 鉴权逻辑已移至中间件
+
+	// 2. 权限检查
+	if currentUser.Role != "admin" {
+		if wantsJSON(r) {
+			writeJSON(w, http.StatusForbidden, jsonResp{Success: false, Message: "无权操作"})
+			return
+		}
+		setFlash(w, "无权操作", "create")
+		http.Redirect(w, r, "/users", http.StatusFound)
+		return
+	}
+
+	// 3. 必须是 POST 请求
+	if r.Method == "POST" {
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		role := r.FormValue("role")
+
+		if err := service.ValidateUsername(username); err != nil {
+			if wantsJSON(r) {
+				writeJSON(w, http.StatusBadRequest, jsonResp{Success: false, Message: err.Error()})
+				return
+			}
+			setFlash(w, err.Error(), "create")
+			http.Redirect(w, r, "/users", http.StatusFound)
+			return
+		}
+		if err := service.ValidatePassword(password); err != nil {
+			if wantsJSON(r) {
+				writeJSON(w, http.StatusBadRequest, jsonResp{Success: false, Message: err.Error()})
+				return
+			}
+			setFlash(w, err.Error(), "create")
+			http.Redirect(w, r, "/users", http.StatusFound)
+			return
+		}
+
+		hashedPassword, err := service.HashPassword(password)
+		if err != nil {
+			if wantsJSON(r) {
+				writeJSON(w, http.StatusInternalServerError, jsonResp{Success: false, Message: "系统错误"})
+				return
+			}
+			setFlash(w, "系统错误", "create")
+			http.Redirect(w, r, "/users", http.StatusFound)
+			return
+		}
+
+		// 构造用户对象
+		newUser := model.User{
+			Username: username,
+			Password: hashedPassword,
+			Role:     role,
+			Avatar:   "", // 或者 "default.png"
+		}
+
+		// 调用 DAO 插入
+		err = dao.AddUser(newUser)
+		if err != nil {
+			if wantsJSON(r) {
+				writeJSON(w, http.StatusBadRequest, jsonResp{Success: false, Message: err.Error()})
+				return
+			}
+			setFlash(w, err.Error(), "create")
+			http.Redirect(w, r, "/users", http.StatusFound)
+			return
+		}
+
+		// 成功后重定向回用户列表
+		if wantsJSON(r) {
+			writeJSON(w, http.StatusOK, jsonResp{Success: true, Message: "创建成功"})
+			return
+		}
+		http.Redirect(w, r, "/users", http.StatusFound)
+	} else {
+		// 如果不是 POST，返回错误或重定向
+		if wantsJSON(r) {
+			writeJSON(w, http.StatusMethodNotAllowed, jsonResp{Success: false, Message: "仅支持 POST 请求"})
+			return
+		}
+		setFlash(w, "仅支持 POST 请求", "create")
+		http.Redirect(w, r, "/users", http.StatusFound)
+	}
 }

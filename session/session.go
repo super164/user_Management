@@ -58,6 +58,7 @@ func GetSession(r *http.Request) (model.User, bool) {
 		return model.User{}, false
 	}
 	return s.User, true
+
 }
 
 // DestroySession 销毁Session(退出登录)

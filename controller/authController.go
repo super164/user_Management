@@ -1,11 +1,17 @@
 package controller
 
 import (
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"userManagement/service"
 	"userManagement/session"
 )
+
+type jsonResp struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
 
 // InitHandler 登录跳转
 func InitHandler(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +32,7 @@ func InitHandler(w http.ResponseWriter, r *http.Request) {
 // IndexHandler 跳转首页概括
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	// 检查是否登录
-	_, ok := session.GetSession(r)
+	user, ok := session.GetSession(r)
 	if !ok {
 		// 未登录则跳转到登录页
 		http.Redirect(w, r, "/login", http.StatusFound)
@@ -39,37 +45,55 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "模板解析失败: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	t.Execute(w, nil)
+	data := map[string]interface{}{
+		"CurrentUser": user,
+	}
+	t.Execute(w, data)
+}
+
+func writeJSON(w http.ResponseWriter, status int, resp jsonResp) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // Register 注册
 func Register(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		t, _ := template.ParseFiles("templates/register.html")
-		t.Execute(w, nil)
+	if _, ok := session.GetSession(r); ok {
+		http.Redirect(w, r, "/users", http.StatusFound)
 		return
 	}
 
-	if r.Method == "POST" {
-		username := r.FormValue("username")
-		password := r.FormValue("password")
-		confimPassword := r.FormValue("confirm_password")
-		if username == "" || password == "" {
-			w.Write([]byte("用户名或密码不能为空: "))
-			return
-		}
-		if password != confimPassword {
-			w.Write([]byte("两次密码不一致: "))
-			return
-		}
-		err := service.Register(username, password)
-		if err != nil {
-			w.Write([]byte("注册失败: " + err.Error()))
-			return
-		}
-
-		http.Redirect(w, r, "/login", 302)
+	if r.Method == "GET" {
+		t, _ := template.ParseFiles("templates/register.html")
+		_ = t.Execute(w, nil)
+		return
 	}
+
+	if r.Method != "POST" {
+		writeJSON(w, http.StatusMethodNotAllowed, jsonResp{Success: false, Message: "仅支持 POST 请求"})
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	if username == "" || password == "" {
+		writeJSON(w, http.StatusBadRequest, jsonResp{Success: false, Message: "用户名或密码不能为空"})
+		return
+	}
+	if password != confirmPassword {
+		writeJSON(w, http.StatusBadRequest, jsonResp{Success: false, Message: "两次密码不一致"})
+		return
+	}
+
+	if err := service.Register(username, password); err != nil {
+		writeJSON(w, http.StatusBadRequest, jsonResp{Success: false, Message: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, jsonResp{Success: true, Message: "注册成功"})
 }
 
 // Login 登录

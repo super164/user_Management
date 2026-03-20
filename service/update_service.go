@@ -41,6 +41,24 @@ func UpdateUserInfo(currentUser model.User, targetID int, username, password str
 			return errors.New("无法禁用管理员账号")
 		}
 	}
+	//校验格式
+	if password != "" {
+		if err := ValidatePassword(password); err != nil {
+			return err
+		}
+		hashed, err := HashPassword(password)
+		if err != nil {
+			return err
+		}
+		password = hashed
+	}
+	if password != "" {
+		hashed, err := HashPassword(password)
+		if err != nil {
+			return err
+		}
+		password = hashed
+	}
 	// 2. 调用 DAO 更新
 	return dao.UpdateUserDynamic(targetID, username, password, status, avatar)
 }

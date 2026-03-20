@@ -51,12 +51,29 @@ func GetUserByID(id int) (*model.User, error) {
 }
 
 // GetUsersByPage 分页查询用户
-func GetUsersByPage(page, pageSize int) ([]model.User, error) {
+func GetUsersByPage(page, pageSize int, query string, status int) ([]model.User, error) {
 	// 计算偏移量
 	offset := (page - 1) * pageSize
 
 	// 执行分页查询
-	rows, err := db.DB.Query("SELECT id, username, password, role, avatar, status, IFNULL(last_login, '') FROM users LIMIT ? OFFSET ?", pageSize, offset)
+	sqlStr := "SELECT id, username, password, role, avatar, status, IFNULL(last_login, '') FROM users WHERE 1=1"
+	var args []interface{}
+
+	if query != "" {
+		sqlStr += " AND username LIKE ?"
+		args = append(args, "%"+query+"%")
+	}
+	// 状态筛选逻辑
+	if status != -1 {
+		sqlStr += " AND status = ?"
+		args = append(args, status)
+	}
+
+	// 添加分页
+	sqlStr += " LIMIT ? OFFSET ?"
+	args = append(args, pageSize, offset)
+
+	rows, err := db.DB.Query(sqlStr, args...)
 	if err != nil {
 		return nil, err
 	}

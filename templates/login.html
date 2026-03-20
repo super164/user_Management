@@ -35,58 +35,15 @@
    </button>
 
    <!-- 忘记密码链接 -->
-   <div class="mt-4 text-center">
-    <a href="#" class="text-sm text-blue-600 hover:text-blue-500">忘记密码？</a>
+   <div class="mt-4 text-center flex justify-between">
+    <a href="#" onclick="alert('请联系管理员进行密码修改')" class="text-sm text-blue-600 hover:text-blue-500">忘记密码？</a>
     <a href="/register" class="text-sm text-blue-600 hover:text-blue-500">没有账号？注册</a>
    </div>
 
   </form>
  </div>
 
- <script>
-   async function submitLogin(event) {
-    event.preventDefault(); // 阻止表单默认提交
-
-    const form = document.getElementById('loginForm');
-    const formData = new FormData(form);
-
-    try {
-     const response = await fetch('/login', {
-      method: 'POST',
-      body: formData
-     });
-
-     if (response.redirected) {
-      window.location.href = response.url;
-      return;
-     }
-
-     const text = await response.text();
-
-     // 简单的错误文本判断
-     if (text.includes("失败") || text.includes("错误") || text.includes("禁用") || text.includes("不存在")) {
-      alert(text);
-     } else {
-      // 尝试解析是否是 JSON 格式的错误
-      try {
-       const json = JSON.parse(text);
-       if (json.success) {
-        window.location.href = '/users';
-       } else {
-        alert(json.message || '登录失败');
-       }
-      } catch (e) {
-       // 如果不是 JSON 也不是错误文本，可能是页面 HTML，直接替换显示
-       document.documentElement.innerHTML = text;
-      }
-     }
-
-    } catch (error) {
-     console.error('Error:', error);
-     alert('网络请求失败，请稍后重试');
-    }
-   }
-  </script>
+ <script src="/static/js/login.js"></script>
 </body>
 
 </html>
